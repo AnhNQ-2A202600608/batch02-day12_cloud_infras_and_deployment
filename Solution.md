@@ -1,6 +1,6 @@
 # Day 12 Lab - Mission Answers
 
-> **Student Name:** AnhNQ  
+> **Student Name:** Nguyễn Quang Anh  
 > **Student ID:** 2A202600608  
 > **Date:** 2026-06-12  
 
