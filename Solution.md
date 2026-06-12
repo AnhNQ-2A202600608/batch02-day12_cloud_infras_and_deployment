@@ -1,5 +1,9 @@
 # Day 12 Lab - Mission Answers
 
+> **Student Name:** AnhNQ  
+> **Student ID:** 2A202600608  
+> **Date:** 2026-06-12  
+
 ## Part 1: Localhost vs Production
 
 ### Exercise 1.1: Anti-patterns found
@@ -45,16 +49,16 @@ Dưới đây là bảng so sánh sự khác biệt giữa hai phiên bản Basi
   - `agent`: Service chạy ứng dụng FastAPI. Được build trực tiếp từ `Dockerfile` hiện tại, expose port `8000:8000`, có cấu hình check health và phụ thuộc vào service `redis`.
   - `redis`: Service cơ sở dữ liệu lưu trữ session và rate limit. Dùng image nhẹ `redis:7-alpine`, giới hạn memory tối đa `128mb` với policy `allkeys-lru` để tự giải phóng key cũ.
 - **Cách thức giao tiếp**:
-  - Hai services giao tiếp với nhau qua mạng ảo nội bộ do Docker Compose tự động tạo ra. Service `agent` kết nối tới Redis bằng hostname là `redis` qua port `6379` thông qua biến môi trường `REDIS_URL=redis://redis:6379/0`.
+  - Hai services giao tiếp with nhau qua mạng ảo nội bộ do Docker Compose tự động tạo ra. Service `agent` kết nối tới Redis bằng hostname là `redis` qua port `6379` thông qua biến môi trường `REDIS_URL=redis://redis:6379/0`.
 
 ---
 
 ## Part 3: Cloud Deployment
 
 ### Exercise 3.1: Railway deployment
-- **Public URL**: `https://day12-production-agent.up.railway.app` (Đường dẫn ví dụ thực tế sau khi deploy thành công).
+- **Public URL**: `https://ai-agent-production-qz8l.onrender.com` (Đường dẫn Render thực tế sau khi deploy thành công).
 - **Screenshots**: Các screenshot được lưu trữ trong thư mục `screenshots/` của repository:
-  - `screenshots/dashboard.png` (Giao diện quản lý Railway Dashboard hiển thị các service và biến môi trường).
+  - `screenshots/dashboard.png` (Giao diện quản lý Render Dashboard hiển thị các service và biến môi trường).
   - `screenshots/running.png` (Trạng thái deploy thành công và log chạy service).
   - `screenshots/test.png` (Kết quả gọi API thành công).
 
@@ -76,7 +80,7 @@ Dưới đây là bảng so sánh sự khác biệt giữa hai phiên bản Basi
       "detail": "Invalid or missing API key. Include header: X-API-Key: <key>"
     }
     ```
-  - Gọi request kèm đúng header `X-API-Key: your-secret-key`:
+  - Gọi request kèm đúng header `X-API-Key: UyHEvCXuq6z95S7DL693nxKn+iMiWpkOMKmE3MlXtas=`:
     ```json
     HTTP/1.1 200 OK
     {
@@ -103,7 +107,7 @@ Dưới đây là bảng so sánh sự khác biệt giữa hai phiên bản Basi
   - Sử dụng Redis-backed Cost Guard kết hợp In-memory Fallback.
   - Mỗi khi nhận request, ước lượng số token đầu vào/đầu ra dựa trên độ dài chuỗi ký tự.
   - Trước khi gọi LLM, kiểm tra tổng tiền đã tiêu dùng trong ngày (key `cost_guard:YYYY-MM-DD` trong Redis).
-  - If số tiền tích lũy vượt quá Daily Budget ($5.0 USD), chặn cuộc gọi và trả về mã lỗi `402 Payment Required`.
+  - Nếu số tiền tích lũy vượt quá Daily Budget ($5.0 USD), chặn cuộc gọi và trả về mã lỗi `402 Payment Required`.
   - Nếu hợp lệ, cho phép gọi LLM và cập nhật cộng dồn số tiền tiêu dùng vào Redis bằng lệnh `incrbyfloat` với thời gian hết hạn (TTL) là 24 giờ.
 
 ---

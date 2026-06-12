@@ -1,5 +1,9 @@
 # Day 12 Lab - Mission Answers
 
+> **Student Name:** AnhNQ  
+> **Student ID:** 2A202600608  
+> **Date:** 2026-06-12  
+
 ## Part 1: Localhost vs Production
 
 ### Exercise 1.1: Anti-patterns found
@@ -52,9 +56,9 @@ Dưới đây là bảng so sánh sự khác biệt giữa hai phiên bản Basi
 ## Part 3: Cloud Deployment
 
 ### Exercise 3.1: Railway deployment
-- **Public URL**: `https://day12-production-agent.up.railway.app` (Đường dẫn ví dụ thực tế sau khi deploy thành công).
+- **Public URL**: `https://ai-agent-production-qz8l.onrender.com` (Đường dẫn Render thực tế sau khi deploy thành công).
 - **Screenshots**: Các screenshot được lưu trữ trong thư mục `screenshots/` của repository:
-  - `screenshots/dashboard.png` (Giao diện quản lý Railway Dashboard hiển thị các service và biến môi trường).
+  - `screenshots/dashboard.png` (Giao diện quản lý Render Dashboard hiển thị các service và biến môi trường).
   - `screenshots/running.png` (Trạng thái deploy thành công và log chạy service).
   - `screenshots/test.png` (Kết quả gọi API thành công).
 
@@ -76,7 +80,7 @@ Dưới đây là bảng so sánh sự khác biệt giữa hai phiên bản Basi
       "detail": "Invalid or missing API key. Include header: X-API-Key: <key>"
     }
     ```
-  - Gọi request kèm đúng header `X-API-Key: your-secret-key`:
+  - Gọi request kèm đúng header `X-API-Key: UyHEvCXuq6z95S7DL693nxKn+iMiWpkOMKmE3MlXtas=`:
     ```json
     HTTP/1.1 200 OK
     {
