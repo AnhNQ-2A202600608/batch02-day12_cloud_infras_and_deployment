@@ -49,11 +49,86 @@ _request_count = 0
 _error_count = 0
 
 # ─────────────────────────────────────────────────────────
-# Simple In-memory Rate Limiter
+# Redis Connection & Session Storage (Stateless)
+# ─────────────────────────────────────────────────────────
+import redis
+
+_redis = None
+if settings.redis_url:
+    try:
+        _redis = redis.from_url(settings.redis_url, decode_responses=True)
+        _redis.ping()
+        logger.info(json.dumps({"event": "redis_connect", "status": "ok"}))
+    except Exception as e:
+        logger.error(json.dumps({"event": "redis_connect", "status": "error", "detail": str(e)}))
+
+_memory_store = {}
+
+def save_session(session_id: str, data: dict, ttl_seconds: int = 3600):
+    serialized = json.dumps(data)
+    if _redis:
+        try:
+            _redis.setex(f"session:{session_id}", ttl_seconds, serialized)
+        except Exception as e:
+            logger.error(json.dumps({"event": "redis_error", "op": "save_session", "detail": str(e)}))
+            _memory_store[f"session:{session_id}"] = data
+    else:
+        _memory_store[f"session:{session_id}"] = data
+
+def load_session(session_id: str) -> dict:
+    if _redis:
+        try:
+            data = _redis.get(f"session:{session_id}")
+            return json.loads(data) if data else {}
+        except Exception as e:
+            logger.error(json.dumps({"event": "redis_error", "op": "load_session", "detail": str(e)}))
+            return _memory_store.get(f"session:{session_id}", {})
+    return _memory_store.get(f"session:{session_id}", {})
+
+def append_to_history(session_id: str, role: str, content: str):
+    session = load_session(session_id)
+    history = session.get("history", [])
+    history.append({
+        "role": role,
+        "content": content,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+    if len(history) > 20:
+        history = history[-20:]
+    session["history"] = history
+    save_session(session_id, session)
+    return history
+
+# ─────────────────────────────────────────────────────────
+# Rate Limiter (Redis-backed with In-memory Fallback)
 # ─────────────────────────────────────────────────────────
 _rate_windows: dict[str, deque] = defaultdict(deque)
 
 def check_rate_limit(key: str):
+    if _redis:
+        try:
+            now = time.time()
+            redis_key = f"rate_limit:{key}"
+            pipe = _redis.pipeline()
+            pipe.zremrangebyscore(redis_key, 0, now - 60)
+            pipe.zcard(redis_key)
+            pipe.zadd(redis_key, {str(now): now})
+            pipe.expire(redis_key, 60)
+            _, count, _, _ = pipe.execute()
+            if count > settings.rate_limit_per_minute:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Rate limit exceeded: {settings.rate_limit_per_minute} req/min",
+                    headers={"Retry-After": "60"},
+                )
+            return
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(json.dumps({"event": "redis_error", "op": "rate_limit", "detail": str(e)}))
+            # Fall through to in-memory fallback below
+
+    # In-memory fallback
     now = time.time()
     window = _rate_windows[key]
     while window and window[0] < now - 60:
@@ -67,7 +142,7 @@ def check_rate_limit(key: str):
     window.append(now)
 
 # ─────────────────────────────────────────────────────────
-# Simple Cost Guard
+# Cost Guard (Redis-backed with In-memory Fallback)
 # ─────────────────────────────────────────────────────────
 _daily_cost = 0.0
 _cost_reset_day = time.strftime("%Y-%m-%d")
@@ -75,12 +150,38 @@ _cost_reset_day = time.strftime("%Y-%m-%d")
 def check_and_record_cost(input_tokens: int, output_tokens: int):
     global _daily_cost, _cost_reset_day
     today = time.strftime("%Y-%m-%d")
+    cost = (input_tokens / 1000) * 0.00015 + (output_tokens / 1000) * 0.0006
+
+    if _redis:
+        try:
+            redis_key = f"cost_guard:{today}"
+            current_cost_str = _redis.get(redis_key)
+            current_cost = float(current_cost_str) if current_cost_str else 0.0
+            
+            if current_cost + cost > settings.daily_budget_usd:
+                raise HTTPException(
+                    status_code=402,
+                    detail=f"Daily budget exceeded: {settings.daily_budget_usd} USD",
+                )
+            
+            _redis.incrbyfloat(redis_key, cost)
+            _redis.expire(redis_key, 86400)
+            return
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(json.dumps({"event": "redis_error", "op": "cost_guard", "detail": str(e)}))
+            # Fall through to in-memory fallback below
+
+    # In-memory fallback
     if today != _cost_reset_day:
         _daily_cost = 0.0
         _cost_reset_day = today
-    if _daily_cost >= settings.daily_budget_usd:
-        raise HTTPException(503, "Daily budget exhausted. Try tomorrow.")
-    cost = (input_tokens / 1000) * 0.00015 + (output_tokens / 1000) * 0.0006
+    if _daily_cost + cost > settings.daily_budget_usd:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Daily budget exceeded: {settings.daily_budget_usd} USD",
+        )
     _daily_cost += cost
 
 # ─────────────────────────────────────────────────────────
@@ -165,12 +266,14 @@ async def request_middleware(request: Request, call_next):
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000,
                           description="Your question for the agent")
+    session_id: str | None = Field(None, description="Optional conversation session ID")
 
 class AskResponse(BaseModel):
     question: str
     answer: str
     model: str
     timestamp: str
+    session_id: str | None = None
 
 # ─────────────────────────────────────────────────────────
 # Endpoints
@@ -214,16 +317,22 @@ async def ask_agent(
         "client": str(request.client.host) if request.client else "unknown",
     }))
 
+    session_id = body.session_id or f"session-{_key[:8]}"
+    append_to_history(session_id, "user", body.question)
+
     answer = llm_ask(body.question)
 
     output_tokens = len(answer.split()) * 2
     check_and_record_cost(0, output_tokens)
+
+    append_to_history(session_id, "assistant", answer)
 
     return AskResponse(
         question=body.question,
         answer=answer,
         model=settings.llm_model,
         timestamp=datetime.now(timezone.utc).isoformat(),
+        session_id=session_id,
     )
 
 
@@ -248,6 +357,11 @@ def ready():
     """Readiness probe. Load balancer stops routing here if not ready."""
     if not _is_ready:
         raise HTTPException(503, "Not ready")
+    if _redis:
+        try:
+            _redis.ping()
+        except Exception:
+            raise HTTPException(503, "Redis not available")
     return {"ready": True}
 
 

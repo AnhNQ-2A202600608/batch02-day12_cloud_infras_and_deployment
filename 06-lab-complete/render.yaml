@@ -3,7 +3,7 @@ services:
     name: ai-agent-production
     runtime: docker
     region: singapore
-    plan: starter
+    plan: free
     healthCheckPath: /health
     autoDeploy: true
     envVars:
@@ -21,3 +21,14 @@ services:
         value: "5.0"
       - key: RATE_LIMIT_PER_MINUTE
         value: "20"
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: agent-redis
+          property: connectionString
+
+  - type: redis
+    name: agent-redis
+    region: singapore
+    plan: free
+    ipAllowList: []
