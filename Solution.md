@@ -126,3 +126,33 @@ Dưới đây là bảng so sánh sự khác biệt giữa hai phiên bản Basi
   - Triển khai Nginx làm load balancer phía trước 3 instance của agent. Các request từ cùng một user có thể được chuyển tới các instance khác nhau một cách luân phiên mà không bị mất dữ liệu hội thoại hay vượt rate limit.
 - **5.5: Stateless test results**: 
   - Khi chạy script `test_stateless.py`, chúng ta kill ngẫu nhiên một instance của agent giữa chừng. Request tiếp theo được route qua instance khác và vẫn tiếp tục cuộc hội thoại bình thường mà không bị mất context. Điều này chứng minh thiết kế stateless hoạt động hoàn hảo.
+
+---
+
+## Bonus Point Exercise: CI/CD Pipeline với GitHub Actions
+
+Chúng tôi đã thiết lập thành công quy trình tự động hóa tích hợp và triển khai liên tục (CI/CD) thông qua GitHub Actions:
+
+### 1. Cấu hình Workflow (.github/workflows/deploy.yml)
+- **Kích hoạt (Triggers):** Tự động chạy khi có `push` hoặc `pull_request` vào các nhánh `main` / `master`.
+- **Continuous Integration (CI):**
+  - Khởi tạo môi trường Python 3.11.
+  - Cài đặt các thư viện cần thiết (`pytest`, `pytest-cov`, `flake8`, `httpx`).
+  - Chạy công cụ kiểm tra chất lượng mã nguồn (Linter): `flake8`.
+  - Tự động chạy bộ kiểm thử Unit Test và tạo báo cáo độ bao phủ mã nguồn (Unit Test Coverage) với `pytest-cov`.
+- **Continuous Deployment (CD):**
+  - Khi luồng CI vượt qua thành công, tiến hành tự động gọi Render Deploy Hook để kích hoạt Render tự động deploy phiên bản mới nhất từ nhánh `main`/`master` mà không cần thao tác thủ công.
+
+### 2. Viết Unit Test và kiểm tra Coverage
+- Đã bổ sung file unit test [test_main.py](file:///d:/code/VinAi%20Action/day12/batch02-day12_cloud_infras_and_deployment/06-lab-complete/tests/test_main.py) kiểm thử các endpoints chính (`/health`, authentication headers `X-API-Key`, và `/ask` API endpoint).
+- Chạy kiểm thử thành công tại local đạt **63% Coverage** với kết quả pass toàn bộ:
+  ```text
+  tests/test_main.py ... [100%]
+  Name                            Stmts   Miss  Cover
+  ---------------------------------------------------
+  06-lab-complete\app\config.py      30      4    87%
+  06-lab-complete\app\main.py       191     77    60%
+  ---------------------------------------------------
+  TOTAL                             221     81    63%
+  ```
+
